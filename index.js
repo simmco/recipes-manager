@@ -1,80 +1,67 @@
-const Express = require('express');
-const ExpressGraphQL = require('express-graphql');
-const Mongoose = require('mongoose');
-const {
-  GraphQLID,
-  GraphQLString,
-  GraphQLList,
-  GraphQLNonNull,
-  GraphQLObjectType,
-  GraphQLSchema,
-} = require('graphql');
+const express = require('express');
+const { ApolloServer, gql } = require('apollo-server-express');
+const mongoose = require('mongoose');
 
-var app = Express();
+var app = express();
 
-Mongoose.connect('mongodb://localhost:27017/recipe');
+mongoose.connect('mongodb://localhost:27017/recipes');
 
-const RecipeModel = Mongoose.model('recipe', {
+const typeDefs = gql`
+  type Query {
+    recipe(id: ID!): Recipe
+    recipes: [Recipe]
+  }
+
+  type Mutation {
+    createRecipe(name: String!, description: String!): Recipe
+  }
+
+  type Recipe {
+    id: ID!
+    name: String
+    description: String
+  }
+`;
+
+const resolvers = {
+  Query: {
+    recipe: (recipe, args, whatever) => {
+      console.log({ recipe, args, whatever });
+      return RecipeModel.findById(args.id).exec();
+    },
+    recipes: () => {
+      return RecipeModel.find().exec();
+    },
+  },
+  Mutation: {
+    createRecipe: (_, args, context, jo) => {
+      console.log({ _, args, context, jo });
+      var person = new RecipeModel(args);
+      return person.save();
+    },
+  },
+};
+
+const RecipeModel = mongoose.model('recipe', {
   name: String,
   description: String,
 });
 
-const RecipeType = new GraphQLObjectType({
-  name: 'Recipe',
-  fields: {
-    id: { type: GraphQLID },
-    name: { type: GraphQLString },
-    description: { type: GraphQLString },
+const server = new ApolloServer({
+  typeDefs: typeDefs,
+  resolvers: resolvers,
+  playground: {
+    endpoint: `http://localhost:3600/graphql`,
+    settings: {
+      'editor.theme': 'light',
+    },
   },
 });
 
-const schema = new GraphQLSchema({
-  query: new GraphQLObjectType({
-    name: 'Query',
-    fields: {
-      recipes: {
-        type: GraphQLList(RecipeType),
-        resolve: (root, args, context, info) => {
-          return RecipeModel.find().exec();
-        },
-      },
-      recipe: {
-        type: RecipeType,
-        args: {
-          id: { type: GraphQLNonNull(GraphQLID) },
-        },
-        resolve: (root, args, context, info) => {
-          return RecipeModel.findById(args.id).exec();
-        },
-      },
-    },
-  }),
-  mutation: new GraphQLObjectType({
-    name: 'Mutation',
-    fields: {
-      recipe: {
-        type: RecipeType,
-        args: {
-          name: { type: GraphQLNonNull(GraphQLString) },
-          description: { type: GraphQLNonNull(GraphQLString) },
-        },
-        resolve: (root, args, context, info) => {
-          var person = new RecipeModel(args);
-          return person.save();
-        },
-      },
-    },
-  }),
+server.applyMiddleware({
+  app: app,
 });
 
-app.use(
-  '/graphql',
-  ExpressGraphQL({
-    schema: schema,
-    graphiql: true,
-  })
-);
-
-app.listen(3000, () => {
+app.listen(3600, () => {
   console.log('Listening at :3000');
 });
